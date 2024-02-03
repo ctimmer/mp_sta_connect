@@ -1,12 +1,50 @@
-# Connect to know WIFI access point
-# Feel free to steal any of this code, I did
+#
+##
+# @mainpage Example connecting station to WI-FI
+#
+# @section description_main Description
+# This program connects a micro controller station to a WI-FI network
+#
+# @section notes_main Notes
+# - Testing
+#   - Raspberry Pico w
+#   - MicroPython v22 or later
+#
 
-import sys
+##
+# @file sta_connect.py
+#
+#
+# @section description_sta_connect Description
+# Source for example station connection code.
+#
+# @section libraries_main Libraries/Modules
+# - sys
+#   - Used when debugging
+# - network
+#   - Used to access WLAN
+#   - Used to access status and STAT_* constants
+# - time
+#   - Access to time_ms, ticks_* functions.
+#
+# @section notes_doxygen_example Notes
+# - Comments are Doxygen compatible.
+#
+# @section todo_sta_connect TODO
+# - None.
+#
+# @section author_doxygen_example Author(s)
+# - Created by Curt Timmerman 01/01/2024
+
+#import sys
 import network
 import time
 
+## connection timeout
 CONNECT_TIMEOUT_SECONDS = 10
+## country code for access point (unused at this time)
 WIFI_COUNTRY = "US"
+## Valid SSID/PASSWORD table
 SSID_LIST = {
     "Crema guest" : {
         "password" : "Happy2024!" ,
