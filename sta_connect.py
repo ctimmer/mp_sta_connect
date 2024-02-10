@@ -40,153 +40,175 @@
 import network
 import time
 
-## connection timeout
-CONNECT_TIMEOUT_SECONDS = 10
-## country code for access point (unused at this time)
-WIFI_COUNTRY = "US"
-## Valid SSID/PASSWORD table
-SSID_LIST = {
-    "Crema guest" : {
-        "password" : "Happy2024!" ,
-        "priority" : 0
-        } ,
-    "myrouter" : {
-        "password" : "mypassword" ,
-        "ifconfig" : ('192.168.19.100', '255.255.0.0', '192.168.1.1', '8.8.8.8') ,
-        "priority" : 10
-        } ,
-    "myotherrouter" : {
-        "password" : "myotherpassword" ,
-        "ifconfig" : ('192.168.19.100', '255.255.0.0', '192.168.1.1', '8.8.8.8') ,
-        "priority" : 0
-        } ,
-    "OpenRouter" : {       # AP with no password
-        "password" : None ,
-        "priority" : 0
+import sta_connect_config as config
+
+class wlan_station :
+    status_constants = {
+        'STAT_CONNECTING' : {
+            "success" : False ,
+            "fatal" : False ,
+            "message" : "Connecting..."
+            } ,
+        'STAT_CONNECT_FAIL' : {
+            "success" : False ,
+            "fatal" : True ,
+            "message" : "Fail - Could not connect"
+            } ,
+        'STAT_WRONG_CONNECT_FAIL' : {
+            'success' : False ,
+            "fatal" : True ,
+            "message" : "Fail - Wrong connect"
+            } ,
+        'STAT_GOT_IP' : {
+            'success' : True ,
+            "fatal" : False ,
+            "message" : "Connected"
+            } ,
+        'STAT_IDLE' : {
+            'success' : False ,
+            "fatal" : False ,
+            "message" : "Idle"
+            } ,
+        'STAT_WRONG_PASSWORD' : {
+            'success' : False ,
+            "fatal" : True ,
+            "message" : "Fail - Invalid password"
+            } ,
+        'STAT_NO_AP_FOUND' : {
+            'success' : False ,
+            "fatal" : True ,
+            "message" : "Fail - No access point"
+            } ,
+        "UNKNOWN" : {
+            'success' : False ,
+            "fatal" : True ,
+            "message" : "Unknown status"
+            }
         }
-    }
-
-def do_disconnect (wlan) :
-    #---- Clear existing connection
-    if wlan.active() :
-        print ("Deactivate")
-        if wlan.isconnected () :
-            print ("Disconnecting")
-            wlan.disconnect ()
-            for retry_count in range (20) : # wait for dicconnect
-            #while wlan.isconnected () : # wait for dicconnect
-                if not wlan.isconnected () :
-                    break
-                print ("waiting disconnect")
-                time.sleep_ms (50)
-        wlan.active(False)
-        for retry_count in range (20) : # wait for inactive
-            if not wlan.active () :          # is this needed?
-                break
-            print ("waiting inactive")
-            time.sleep_ms (50)
-
-def do_wifi_scan (wlan) :
-    ap_return = None
-    #do_disconnect (wlan)
-
-    print ("Scanning...")
-    wlan.active(True)
-    #---- Do multiple scans because scans do not always return the same set of AP's
-    for retry_count in range (10) :
-        access_points = wlan.scan()
-        #print (access_points)
-        for access_point in access_points :
-            #print (access_point)
-            ssid = access_point[0].decode ()
-            #print ("ssid:", ssid)
-            if ssid not in SSID_LIST :
+    ## implemented by __INIT__
+    status_results = {
+        }
+    def __init__ (self ,
+                  show_all = False) :
+        self.show_all = show_all
+        for status_key in wlan_station.status_constants :
+            if status_key == 'UNKNOWN' :
                 continue
-            if ap_return is not None :
-                if ssid == ap_return ["ssid"] :
-                    continue               # Already in AP return
-                if SSID_LIST[ssid]["priority"] <= ap_return["priority"] :
-                    print ("skipping:", ssid)
+            if hasattr (network, status_key) :
+                wlan_station.status_results [getattr (network, status_key)] \
+                    = wlan_station.status_constants [status_key]
+                wlan_station.status_results [getattr (network, status_key)]["constant_id"] \
+                    = status_key
+            else :
+                pass # do something here?
+        #
+        self.wlan = network.WLAN (network.STA_IF)
+        self.access_point = None
+
+    def connect (self) :
+        self.disconnect_from_ap ()
+        self.connect_to_ap ()
+
+    def disconnect_from_ap (self) :
+        ## Clear existing connection, this doesn't work
+        if self.wlan.active() :
+            print ("Deactivate")
+            if self.wlan.isconnected () :
+                print ("Disconnecting")
+                self.wlan.disconnect ()
+                for retry_count in range (20) : # wait for dicconnect
+                #while self.wlan.isconnected () : # wait for dicconnect
+                    if not self.wlan.isconnected () :
+                        break
+                    #print ("waiting disconnect")
+                    time.sleep_ms (50)
+            self.wlan.active(False)
+            for retry_count in range (20) : # wait for inactive
+                if not self.wlan.active () :          # is this needed?
+                    break
+                #print ("waiting inactive")
+                time.sleep_ms (50)
+
+    def wifi_scan (self) :
+        ap_return = None
+        print ("Scanning for access points...")
+        self.wlan.active(True)
+        ## Do multiple scans because scans do not always return the same set of AP's
+        for retry_count in range (10) :
+            access_points = self.wlan.scan()
+            #print (access_points)
+            for access_point in access_points :
+                #print (access_point)
+                ssid = access_point[0].decode ()
+                #print ("ssid:", ssid)
+                if ssid not in config.SSID_LIST :
                     continue
-            ap_return = {"ssid" : ssid}    # update AP return
-            ap_return.update (SSID_LIST[ssid]) # add parameters
-        if ap_return is not None \
-        and retry_count >= 3 :
-            break
-
-    if ap_return is None :
-        wlan.active(False)
-    return ap_return
-
-def do_connect(disconnect_only = False):
-    #import network
-    access_point = None
-    wlan = network.WLAN(network.STA_IF)
-    do_disconnect (wlan)
-    if disconnect_only :
-        return None
-
-    #---- get access point
-    access_point = do_wifi_scan (wlan)
-    if access_point is None :
-        print ("No known access points found")
-        return None
-
-    #access_point["password"] = "Error" # for testing
-    #access_point["ssid"] = "Error"     # for testing
-    print('connecting to WIFI:', access_point["ssid"])
-    if "ifconfig" in access_point :
-        wlan.ifconfig (access_point["ifconfig"])
-    print ("SSID:" + access_point["ssid"], "PW:" + access_point["password"])
-    wlan.connect (access_point["ssid"], access_point["password"])
-    connect_max_ms = time.ticks_add (time.ticks_ms (), (CONNECT_TIMEOUT_SECONDS * 1000))
-    connect_fail_message = "Connect TIME OUT"
-    while time.ticks_diff (connect_max_ms, time.ticks_ms ()) > 0 :
-        time.sleep_ms (100)
-        status = wlan.status ()
-        print ("status:", status)
-        if status == network.STAT_CONNECTING :
-            #print ("Connecting...")
-            continue
-        if status == network.STAT_GOT_IP :
-            print('Connected:', wlan.ifconfig())
-            return
-        if status == network.STAT_WRONG_PASSWORD :
-            connect_fail_message = "Invalid PASSWORD"
-            break
-        if status == network.STAT_NO_AP_FOUND :
-            connect_fail_message = "Invalid SSID"
-            break
-        # Some versions (pico w) don't have this return value
-        #if True :
-        if hasattr (network, 'STAT_WRONG_CONNECT_FAIL') :
-            if status == network.STAT_WRONG_CONNECT_FAIL :
-                connect_fail_message = "Wrong connect FAIL"
+                if ap_return is not None :
+                    if ssid == ap_return ["ssid"] :
+                        continue               # Already in AP return
+                    if config.SSID_LIST[ssid]["priority"] <= ap_return["priority"] :
+                        print ("skipping:", ssid)
+                        continue
+                ap_return = {"ssid" : ssid}    # update AP return
+                ap_return.update (config.SSID_LIST[ssid]) # add parameters
+            if ap_return is not None \
+            and retry_count >= 3 :
                 break
-        if status == network.STAT_IDLE :
-            #print ("Idle")
-            continue
-        # Shouldn't be here???
-        connect_fail_message = "Unknown status:" + str (status)
-        break
 
-    print (connect_fail_message)
-    wlan.active(False)
+        if ap_return is None :
+            self.wlan.active(False)
+        return ap_return
 
-def show_network () :
-    import network
-    stat_list = ['STAT_CONNECTING',
-                 'STAT_CONNECT_FAIL',
-                 'STAT_WRONG_CONNECT_FAIL' ,
-                 'STAT_GOT_IP',
-                 'STAT_IDLE',
-                 'STAT_WRONG_PASSWORD' ,
-                 'STAT_NO_AP_FOUND']
-    for stat_var in stat_list :
-        stat_val = "Not implemented"
-        if hasattr (network, stat_var) :
-            stat_val = getattr (network, stat_var)
-        print (stat_var, "=", stat_val)
+    def connect_to_ap (self, access_point = None) :
+        #---- get access point
+        if access_point is None :
+            access_point = self.wifi_scan ()
+        if access_point is None :
+            print ("No known access points found")
+            return None
 
-show_network ()            
-do_connect ()
+        #access_point["password"] = "Error" # for testing
+        #access_point["ssid"] = "Error"     # for testing
+        print('connecting to WIFI:', access_point["ssid"])
+        if "ifconfig" in access_point :
+            self.wlan.ifconfig (access_point["ifconfig"])
+        #print ("SSID:" + access_point["ssid"], "PW:" + access_point["password"])
+        self.wlan.connect (access_point["ssid"], access_point["password"])
+        connect_max_ms = time.ticks_add (time.ticks_ms (), (config.CONNECT_TIMEOUT_SECONDS * 1000))
+        connect_fail_message = "Connect TIME OUT"
+        while time.ticks_diff (connect_max_ms, time.ticks_ms ()) > 0 :
+            time.sleep_ms (100)
+            status = self.wlan.status ()
+            #print ("status:", status)
+            status_data = None
+            if status in wlan_station.status_results :
+                status_data = wlan_station.status_results [status]
+            else :
+                status_data = wlan_station.status_constants ["UNKNOWN"]
+                status_data ["message"] = "Unknown status: " + str (status)
+            #print (status_data)
+            if status_data ["success"] :
+                print (status_data ["message"] + ":", self.wlan.ifconfig())
+                return
+            if status_data ["fatal"] :
+                connect_fail_message = status_data ["message"]
+                break
+            continue # try again
+        print (connect_fail_message)
+        self.wlan.active(False)
+        return
+
+    def show_network (self) :
+        for stat_var in  wlan_station.status_constants :
+            if stat_var == "UNKNOWN" :
+                continue
+            stat_val = "Not implemented"
+            if hasattr (network, stat_var) :
+                stat_val = getattr (network, stat_var)
+            print (stat_var, "=", stat_val)
+
+sta = wlan_station ()
+#print (sta.wifi_scan ())
+sta.connect ()
+#sta.show_network ()            
+
