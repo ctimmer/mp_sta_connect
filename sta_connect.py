@@ -47,13 +47,16 @@ import binascii
 
 import sta_connect_config as config
 
+## show_all default
+SHOW_ALL = False
+
 ##
 # Defines the base class for WLAN interface.
 #
 class WlanStation :
 
     def __init__ (self ,
-                  show_all = False) :
+                  show_all = SHOW_ALL) :
         ##
         # The WlanStation base class initializer.
         #
@@ -73,6 +76,7 @@ class WlanStation :
         # @section notes_on_status_constants Notes
         # - Not all implementations include every status constant
         #
+        self.ap_config = None
         self.status_constants = {
             'STAT_CONNECTING' : {
                 "status_value" : "Not implemented" ,
@@ -148,13 +152,19 @@ class WlanStation :
         self.wlan = network.WLAN (network.STA_IF)
         if self.show_all :
             self.show_network ()
-        self.access_point = None
 
-    def connect (self) :
+    def connect (self, ap_config = None) :
         if self.show_all :
             print ("\nconnect: Entry")
+        connect_result = None
         self.disconnect_from_ap ()
-        self.connect_to_ap ()
+        self.ap_config = ap_config
+        ## Multiple tries are required when password changes
+        for retry_count in range (3) :
+            connect_result = self.connect_to_ap ()
+            if connect_result is not None :
+                break
+        return connect_result
 
     def disconnect (self) :
         if self.show_all :
@@ -189,66 +199,68 @@ class WlanStation :
     def wifi_scan (self) :
         if self.show_all :
             print ("\nwifi_scan: Entry")
-        ap_return = None
+        self.ap_config = None
         if self.show_all :
             print ("Scanning for access points...")
         self.wlan.active(True)
-        ## Do multiple scans because scans do not always return the same set of AP's
+        ## Do multiple scans because scans do not always return the same list of AP's
         for retry_count in range (10) :
             if self.show_all :
                 print ("scan: pass:", (retry_count + 1))
-            access_points = self.wlan.scan()
-            #print (access_points)
-            for access_point in access_points :
+            ## Get available access points
+            scan_aps = self.wlan.scan()
+            #print (scan_aps)
+            for scan_ap in scan_aps :
                 if self.show_all :
-                    print ("Scanned accesspoint:", access_point)
-                ssid = access_point[0].decode ()
+                    print ("Scanned accesspoint:", scan_ap)
+                ssid = scan_ap[0].decode ()
                 #print ("ssid:", ssid)
                 if ssid not in config.SSID_LIST :
                     continue
-                if ap_return is not None :
-                    if ssid == ap_return ["ssid"] :
+                if self.ap_config is not None :
+                    if ssid == self.ap_config ["ssid"] :
                         continue               # Already in AP return
-                    if config.SSID_LIST[ssid]["priority"] <= ap_return["priority"] :
+                    if config.SSID_LIST[ssid]["priority"] <= self.ap_config["priority"] :
                         if self.show_all :
                             print ("skipping:", ssid)
                         continue
-                ap_return = {
+                self.ap_config = {
                     "ssid" : ssid ,
-                    "bssid" : binascii.hexlify (access_point [1]) ,
-                    "channel" : access_point [2] ,
-                    "RSSI" : access_point [3] ,
-                    "security" : access_point [4] ,
-                    "hidden" : access_point [5] == 1
+                    "bssid" : binascii.hexlify (scan_ap [1]) ,
+                    "channel" : scan_ap [2] ,
+                    "RSSI" : scan_ap [3] ,
+                    "security" : scan_ap [4] ,
+                    "hidden" : scan_ap [5] == 1
                     }    # update AP return
-                ap_return.update (config.SSID_LIST[ssid]) # add parameters
+                self.ap_config.update (config.SSID_LIST[ssid]) # add parameters
                 if self.show_all :
-                    print ("AP selected:", ap_return)
-            if ap_return is not None \
+                    print ("AP selected:", self.ap_config)
+            if self.ap_config is not None \
             and retry_count >= 3 :
                 break
 
-        if ap_return is None :
+        if self.ap_config is None :
             self.wlan.active(False)
-        return ap_return
+        return self.ap_config
+    # end wifi_scan #
 
-    def connect_to_ap (self, access_point = None) :
+    def connect_to_ap (self) :
         if self.show_all :
             print ("\nconnect_to_ap: Entry")
         #---- get access point
-        if access_point is None :
-            access_point = self.wifi_scan ()
-        if access_point is None :
+        if self.ap_config is None :
+            self.ap_config = self.wifi_scan ()
+        if self.ap_config is None :
             print ("No known access points found")
             return None
 
-        #access_point["password"] = "Error" # for testing
-        #access_point["ssid"] = "Error"     # for testing
-        print('connecting to WIFI:', access_point["ssid"])
-        if "ifconfig" in access_point :
-            self.wlan.ifconfig (access_point["ifconfig"])
-        #print ("SSID:" + access_point["ssid"], "PW:" + access_point["password"])
-        self.wlan.connect (access_point["ssid"], access_point["password"])
+        #self.ap_config["password"] = "Error" # for testing
+        #self.ap_config["ssid"] = "Error"     # for testing
+        print('connecting to WIFI:', self.ap_config["ssid"])
+        if "ifconfig" in self.ap_config :
+            self.wlan.ifconfig (self.ap_config["ifconfig"])
+        #print ("SSID:" + self.ap_config["ssid"], "PW:" + self.ap_config["password"])
+        self.wlan.connect (self.ap_config["ssid"], self.ap_config["password"])
         connect_max_ms = time.ticks_add (time.ticks_ms (), (config.CONNECT_TIMEOUT_SECONDS * 1000))
         connect_fail_message = "Connect TIME OUT"
         while time.ticks_diff (connect_max_ms, time.ticks_ms ()) > 0 :
@@ -265,15 +277,16 @@ class WlanStation :
             if self.show_all :
                 print ("status info:", status_data)
             if status_data ["success"] :
-                print (status_data ["message"] + ":", self.wlan.ifconfig())
-                return
+                if_config = self.wlan.ifconfig()
+                print (status_data ["message"] + ":", if_config)
+                return if_config
             if status_data ["fatal"] :
                 connect_fail_message = status_data ["message"]
                 break
             continue # try again
         print (connect_fail_message)
         self.wlan.active(False)
-        return
+        return None
 
     ## Show information about the network class
     #
@@ -286,7 +299,7 @@ class WlanStation :
     #
     def show_network (self) :
         print ("network module status constants:")
-        for stat_var in  self.status_constants :
+        for stat_var in self.status_constants :
             if stat_var == "_UNKNOWN_" :
                 continue
             stat_val = "Not implemented"
@@ -298,13 +311,13 @@ class WlanStation :
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
 """
 if __name__ == "__main__" :
-    sta = WlanStation (show_all=False)
+    sta = WlanStation (show_all=True)
     #sta.disconnect_from_ap ()
     sta.show_network ()
     #print (sta.wifi_scan ())
-    sta.connect ()
-    time.sleep (5)
-    sta.disconnect ()
+    print (sta.connect ())
+    #time.sleep (5)
+    #sta.disconnect ()
 """
 #endif
 """
