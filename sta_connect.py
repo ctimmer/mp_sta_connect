@@ -311,7 +311,7 @@ class WlanStation :
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
 """
 if __name__ == "__main__" :
-    sta = WlanStation (show_all=True)
+    sta = WlanStation (show_all=False)
     #sta.disconnect_from_ap ()
     sta.show_network ()
     #print (sta.wifi_scan ())
