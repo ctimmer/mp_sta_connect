@@ -256,7 +256,9 @@ class WlanStation :
 
         #self.ap_config["password"] = "Error" # for testing
         #self.ap_config["ssid"] = "Error"     # for testing
-        print('connecting to WIFI:', self.ap_config["ssid"])
+        if self.show_all :
+            print('connecting to WIFI:', self.ap_config["ssid"])
+            #print (self.ap_config)
         if "ifconfig" in self.ap_config :
             self.wlan.ifconfig (self.ap_config["ifconfig"])
         #print ("SSID:" + self.ap_config["ssid"], "PW:" + self.ap_config["password"])
@@ -278,7 +280,8 @@ class WlanStation :
                 print ("status info:", status_data)
             if status_data ["success"] :
                 if_config = self.wlan.ifconfig()
-                print (status_data ["message"] + ":", if_config)
+                if self.show_all :
+                    print (status_data ["message"] + ":", if_config)
                 return if_config
             if status_data ["fatal"] :
                 connect_fail_message = status_data ["message"]
@@ -312,10 +315,11 @@ class WlanStation :
 """
 if __name__ == "__main__" :
     sta = WlanStation (show_all=False)
-    #sta.disconnect_from_ap ()
-    sta.show_network ()
+    #sta.show_network ()
     #print (sta.wifi_scan ())
-    print (sta.connect ())
+    conn_result = sta.connect ()
+    if conn_result is not None :
+        print ("Connected:", conn_result)
     #time.sleep (5)
     #sta.disconnect ()
 """
