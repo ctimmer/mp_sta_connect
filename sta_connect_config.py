@@ -7,7 +7,7 @@ WIFI_COUNTRY = "US"
 ## Valid SSID/PASSWORD table
 SSID_LIST = {
     "Crema guest" : {
-        "password" : "Springisintheair!" ,
+        "password" : "Crema2open" ,
         "priority" : 0
         } ,
     "myrouter" : {
